@@ -33,7 +33,6 @@ def process_football_data(file_path):
     
     return df
 
-# --- TEST ---
 file_path = 'C:\studia\prediction_app\data\PL2025.csv' # Upewnij się, że masz ten plik
 data = process_football_data(file_path)
 

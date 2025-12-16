@@ -2,8 +2,6 @@ import sqlite3
 from pathlib import Path
 import pandas as pd
 from datetime import datetime
-import glob
-import os
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "sports.db"
@@ -11,7 +9,7 @@ DB_PATH = BASE_DIR / "data" / "sports.db"
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row  # żeby móc odczytywać po nazwach kolumn
+    conn.row_factory = sqlite3.Row
     return conn
 
 
@@ -19,7 +17,6 @@ def init_db():
     conn = get_connection()
     cur = conn.cursor()
 
-    # prosta tabela dla meczów piłkarskich (na początek)
     cur.execute("""
         CREATE TABLE IF NOT EXISTS football_matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -37,18 +34,33 @@ def init_db():
 
 
 def clear_football_matches():
-    """Opcjonalnie czyści tabelę przed ponownym importem."""
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("DELETE FROM football_matches")
+    cur.execute("DELETE FROM football_matches;")
     conn.commit()
     conn.close()
 
 
-def import_football_csv(csv_path, league_name):
+def parse_date_safe(x: str):
+    """
+    Football-Data.co.uk ma różne formaty daty zależnie od sezonu/ligi.
+    Najczęstsze: dd/mm/YYYY, dd/mm/YY, YYYY-mm-dd
+    """
+    x = str(x).strip()
+
+    for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(x, fmt).date().isoformat()
+        except Exception:
+            pass
+
+    return None
+
+
+def import_football_csv(csv_path: Path, league_name: str):
     df = pd.read_csv(csv_path)
 
-    # Normalizacja nazw kolumn, bo Football-Data zmienia je między sezonami
+    # Mapowanie nazw kolumn z różnych wersji plików
     rename_map = {
         "HomeTeam": "home_team",
         "AwayTeam": "away_team",
@@ -58,31 +70,33 @@ def import_football_csv(csv_path, league_name):
         "FTAG": "away_goals",
         "HG": "home_goals",
         "AG": "away_goals",
-        "Date": "match_date"
+        "Date": "match_date",
     }
 
     df = df.rename(columns=rename_map)
 
+    required_cols = ["home_team", "away_team", "match_date"]
+    for col in required_cols:
+        if col not in df.columns:
+            raise ValueError(f"Brakuje kolumny '{col}' w pliku: {csv_path.name}")
+
+    # Jeśli nie ma goli (czasem bywa), dodaj puste
+    if "home_goals" not in df.columns:
+        df["home_goals"] = None
+    if "away_goals" not in df.columns:
+        df["away_goals"] = None
+
+    # Usuń wiersze bez drużyn
     df = df.dropna(subset=["home_team", "away_team"])
 
+    # Liga
     df["league"] = league_name
 
-    # Konwersja daty
-    def parse_date(x):
-        try:
-            return datetime.strptime(x, "%d/%m/%Y").date().isoformat()
-        except Exception:
-            try:
-                return datetime.strptime(x, "%Y-%m-%d").date().isoformat()
-            except Exception:
-                return None
-
-    df["match_date"] = df["match_date"].astype(str).apply(parse_date)
-
-    # Wywalamy mecze bez daty
+    # Data
+    df["match_date"] = df["match_date"].apply(parse_date_safe)
     df = df.dropna(subset=["match_date"])
 
-    # Wybieramy tylko potrzebne kolumny
+    # Docelowe kolumny
     df_final = df[["league", "home_team", "away_team", "match_date", "home_goals", "away_goals"]]
 
     # Zapis do bazy
@@ -90,55 +104,73 @@ def import_football_csv(csv_path, league_name):
     df_final.to_sql("football_matches", conn, if_exists="append", index=False)
     conn.close()
 
-    print(f"Imported {len(df_final)} rows from {csv_path}")
+    print(f"✅ Imported {len(df_final)} rows from {csv_path.name} ({league_name})")
+
+
+def detect_league_from_filename(filename_upper: str):
+    """
+    Wykrywanie ligi po nazwie pliku.
+    Obsługuje zarówno Twoje nazwy (PL/LALIGA/...) jak i kody Football-Data (E0/SP1/...).
+    """
+    league_map = {
+        # Twoje tagi (jeśli tak nazwałeś pliki)
+        "PL": "Premier League",
+        "LALIGA": "La Liga",
+        "SA": "Serie A",
+        "BUNDES": "Bundesliga",
+        "LEAGUE": "Ligue 1",
+
+        # Kody Football-Data.co.uk (bardzo częste)
+        "E0": "Premier League",
+        "SP1": "La Liga",
+        "I1": "Serie A",
+        "D1": "Bundesliga",
+        "F1": "Ligue 1",
+    }
+
+    for key, full_name in league_map.items():
+        if key in filename_upper:
+            return full_name
+
+    return None
 
 
 def import_all_csv():
     folder_path = BASE_DIR / "data" / "football_csv"
-    csv_files = folder_path.glob("*.csv")
+    csv_files = sorted(folder_path.glob("*.csv"))
 
-    league_map = {
-        "PL": "Premier League",
-        "LALIGA": "La Liga",
-        "SERIEA": "Serie A",
-        "BUNDES": "Bundesliga",
-        "LIGUE1": "Ligue 1"
-    }
+    print("📁 Szukam CSV w folderze:", folder_path)
+    print("📄 Znalezione pliki:", [p.name for p in csv_files])
+
+    if not csv_files:
+        print("❌ Nie znaleziono żadnych plików .csv w data/football_csv/")
+        return
 
     for file_path in csv_files:
-        filename = os.path.basename(str(file_path)).upper()
+        filename_upper = file_path.name.upper()
+        league = detect_league_from_filename(filename_upper)
 
-        league = None
-        for key, full_name in league_map.items():
-            if key in filename:
-                league = full_name
-                break
+        print("➡️  Plik:", file_path.name, "| wykryta liga:", league)
 
         if league is None:
-            print("Skipping file (unknown league):", file_path)
+            print("⚠️  Pomijam plik (nieznana liga):", file_path.name)
             continue
 
         import_football_csv(file_path, league)
 
 
-def insert_dummy_data():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        INSERT INTO football_matches (league, home_team, away_team, match_date, home_goals, away_goals)
-        VALUES
-        ('Premier League', 'Liverpool', 'Arsenal', '2025-12-20', NULL, NULL),
-        ('La Liga', 'Real Madrid', 'Barcelona', '2025-12-21', NULL, NULL);
-    """)
-    conn.commit()
-    conn.close()
-
-
 if __name__ == "__main__":
     init_db()
-    clear_football_matches()
-
-    # insert_dummy_data()
+    clear_football_matches()  # żeby nie dublować importu
 
     import_all_csv()
-    print("Database initialized and CSV data imported at:", DB_PATH)
+
+    # szybki test ile weszło
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM football_matches;")
+    total = cur.fetchone()[0]
+    conn.close()
+
+    print("✅ Done. Rows in football_matches:", total)
+    print("DB_PATH:", DB_PATH)

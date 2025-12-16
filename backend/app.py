@@ -1,4 +1,4 @@
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_cors import CORS
 from db import get_connection
 
@@ -25,6 +25,15 @@ def create_app():
 
         matches = [dict(row) for row in rows]
         return jsonify(matches)
+
+    @app.route("/debug/count")
+    def debug_count():
+        conn = get_connection()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM football_matches;")
+        cnt = cur.fetchone()[0]
+        conn.close()
+        return jsonify({"count": cnt})
 
     return app
 

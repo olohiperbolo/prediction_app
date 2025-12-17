@@ -139,6 +139,47 @@ def create_app():
                 pass
             conn.close()
 
+    @app.get("/teams")
+    def get_teams():
+        league = request.args.get("league")
+        season = request.args.get("season")
+
+        where = ["1=1"]
+        params = []
+
+        if league:
+            where.append("league = ?")
+            params.append(league)
+        if season:
+            where.append("season = ?")
+            params.append(season)
+
+        where_sql = " AND ".join(where)
+
+        sql = f"""
+            SELECT DISTINCT team FROM (
+                SELECT home_team AS team FROM football_matches WHERE {where_sql}
+                UNION
+                SELECT away_team AS team FROM football_matches WHERE {where_sql}
+            )
+            ORDER BY team ASC;
+        """
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(sql, tuple(params + params))
+            rows = cur.fetchall()
+            teams = [first_col(r, "team") for r in rows]
+            return jsonify(teams)
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+            conn.close()
+
+
     # GET /matches?league=&season=&date_from=&date_to=&team=&result=&limit=&offset=&sort=
     @app.get("/matches")
     def get_matches():
@@ -261,7 +302,7 @@ def create_app():
 if __name__ == "__main__":
     app = create_app()
 
-    # Sterowanie debug przez ENV (nie hardcode)
+    # Sterowanie debug przez ENV
     debug = os.getenv("FLASK_DEBUG", "0") == "1"
     host = os.getenv("FLASK_HOST", "127.0.0.1")
     port = int(os.getenv("FLASK_PORT", "5000"))

@@ -452,6 +452,106 @@ def create_app():
                 pass
             conn.close()
 
+    @app.get("/stats/table")
+    def league_table():
+        league = request.args.get("league")
+        season = request.args.get("season")
+
+        if not league or not season:
+            return jsonify({
+                "error": "Bad Request",
+                "message": "league and season are required"
+            }), 400
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            # Bierzemy wszystkie mecze w lidze+sezonie z kompletnym wynikiem
+            cur.execute(
+                """
+                SELECT home_team, away_team, home_goals, away_goals
+                FROM football_matches
+                WHERE league = ? AND season = ?
+                  AND home_goals IS NOT NULL AND away_goals IS NOT NULL;
+                """,
+                (league, season),
+            )
+            rows = cur.fetchall()
+
+            # tabela w pythonie (łatwo i czytelnie na MVP)
+            table = {}  # team -> stats
+
+            def ensure_team(t: str):
+                if t not in table:
+                    table[t] = {
+                        "team": t,
+                        "played": 0,
+                        "wins": 0,
+                        "draws": 0,
+                        "losses": 0,
+                        "goals_for": 0,
+                        "goals_against": 0,
+                        "goal_diff": 0,
+                        "points": 0,
+                    }
+
+            for r in rows:
+                h = r["home_team"]
+                a = r["away_team"]
+                hg = r["home_goals"]
+                ag = r["away_goals"]
+
+                ensure_team(h)
+                ensure_team(a)
+
+                # played
+                table[h]["played"] += 1
+                table[a]["played"] += 1
+
+                # goals
+                table[h]["goals_for"] += hg
+                table[h]["goals_against"] += ag
+                table[a]["goals_for"] += ag
+                table[a]["goals_against"] += hg
+
+                # results + points
+                if hg > ag:
+                    table[h]["wins"] += 1
+                    table[a]["losses"] += 1
+                    table[h]["points"] += 3
+                elif hg < ag:
+                    table[a]["wins"] += 1
+                    table[h]["losses"] += 1
+                    table[a]["points"] += 3
+                else:
+                    table[h]["draws"] += 1
+                    table[a]["draws"] += 1
+                    table[h]["points"] += 1
+                    table[a]["points"] += 1
+
+            items = list(table.values())
+            for it in items:
+                it["goal_diff"] = it["goals_for"] - it["goals_against"]
+
+            # sort: points desc, GD desc, GF desc, name asc
+            items.sort(key=lambda x: (-x["points"], -x["goal_diff"], -x["goals_for"], x["team"]))
+
+            # add rank
+            for i, it in enumerate(items, start=1):
+                it["rank"] = i
+
+            return jsonify({
+                "league": league,
+                "season": season,
+                "teams": items,
+                "note": "Table computed from matches with non-null scores only. Tiebreakers: points, goal_diff, goals_for, team name.",
+            })
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+            conn.close()
 
     # GET /matches?league=&season=&date_from=&date_to=&team=&result=&limit=&offset=&sort=
     @app.get("/matches")

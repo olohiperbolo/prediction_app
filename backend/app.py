@@ -179,6 +179,149 @@ def create_app():
                 pass
             conn.close()
 
+    @app.get("/stats/team")
+    def team_stats():
+        league = request.args.get("league")
+        season = request.args.get("season")
+        team = request.args.get("team")
+
+        if not league or not season or not team:
+            return jsonify({
+                "error": "Bad Request",
+                "message": "league, season and team are required"
+            }), 400
+
+        try:
+            last_n = parse_int("last", request.args.get("last"), default=5, min_v=1, max_v=20)
+        except ValueError as e:
+            return jsonify({"error": "Bad Request", "message": str(e)}), 400
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            # 1) ALL matches for team in league+season
+            cur.execute(
+                """
+                SELECT
+                    id, match_date, home_team, away_team, home_goals, away_goals
+                FROM football_matches
+                WHERE league = ? AND season = ? AND (home_team = ? OR away_team = ?)
+                ORDER BY match_date ASC;
+                """,
+                (league, season, team, team),
+            )
+            rows = [dict(r) for r in cur.fetchall()]
+
+            if not rows:
+                return jsonify({
+                    "error": "Not Found",
+                    "message": "No matches found for given league/season/team"
+                }), 404
+
+            # Helpers
+            def outcome_for_team(r: dict) -> str:
+                hg, ag = r["home_goals"], r["away_goals"]
+                # jeśli braki w golach (None) - traktuj jako unknown
+                if hg is None or ag is None:
+                    return "U"
+                if r["home_team"] == team:
+                    if hg > ag: return "W"
+                    if hg < ag: return "L"
+                    return "D"
+                else:
+                    if ag > hg: return "W"
+                    if ag < hg: return "L"
+                    return "D"
+
+            def goals_for_against(r: dict) -> tuple[int | None, int | None]:
+                hg, ag = r["home_goals"], r["away_goals"]
+                if hg is None or ag is None:
+                    return None, None
+                if r["home_team"] == team:
+                    return hg, ag
+                return ag, hg
+
+            # 2) Aggregate stats
+            played = 0
+            wins = draws = losses = 0
+            gf = ga = 0
+            known_score_games = 0
+
+            home_played = away_played = 0
+            home_w = home_d = home_l = 0
+            away_w = away_d = away_l = 0
+
+            for r in rows:
+                out = outcome_for_team(r)
+                if out == "U":
+                    continue  # pomijamy mecze bez wyniku
+
+                played += 1
+                gfor, gagainst = goals_for_against(r)
+                gf += gfor
+                ga += gagainst
+                known_score_games += 1
+
+                is_home = (r["home_team"] == team)
+                if is_home:
+                    home_played += 1
+                else:
+                    away_played += 1
+
+                if out == "W":
+                    wins += 1
+                    if is_home: home_w += 1
+                    else: away_w += 1
+                elif out == "D":
+                    draws += 1
+                    if is_home: home_d += 1
+                    else: away_d += 1
+                elif out == "L":
+                    losses += 1
+                    if is_home: home_l += 1
+                    else: away_l += 1
+
+            # 3) Last N matches (with results)
+            last_matches_src = [r for r in rows if r["home_goals"] is not None and r["away_goals"] is not None]
+            last_matches = last_matches_src[-last_n:] if last_matches_src else []
+            form = "".join(outcome_for_team(r) for r in last_matches)
+
+            def fmt_match(r: dict) -> dict:
+                return {
+                    "id": r["id"],
+                    "match_date": r["match_date"],
+                    "home_team": r["home_team"],
+                    "away_team": r["away_team"],
+                    "home_goals": r["home_goals"],
+                    "away_goals": r["away_goals"],
+                    "team_result": outcome_for_team(r),
+                    "is_home": (r["home_team"] == team),
+                }
+
+            return jsonify({
+                "league": league,
+                "season": season,
+                "team": team,
+                "played": played,
+                "wins": wins,
+                "draws": draws,
+                "losses": losses,
+                "goals_for": gf,
+                "goals_against": ga,
+                "goals_for_per_game": round(gf / played, 3) if played else None,
+                "goals_against_per_game": round(ga / played, 3) if played else None,
+                "home": {"played": home_played, "wins": home_w, "draws": home_d, "losses": home_l},
+                "away": {"played": away_played, "wins": away_w, "draws": away_d, "losses": away_l},
+                "form_last_n": {"n": last_n, "sequence": form},
+                "last_matches": [fmt_match(r) for r in last_matches],
+                "note": "Stats ignore matches with missing scores (home_goals/away_goals is NULL).",
+            })
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+            conn.close()
 
     # GET /matches?league=&season=&date_from=&date_to=&team=&result=&limit=&offset=&sort=
     @app.get("/matches")

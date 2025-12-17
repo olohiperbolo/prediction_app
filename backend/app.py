@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 from datetime import date
 from flask import Flask, jsonify, request
 from flask_cors import CORS
@@ -112,7 +111,7 @@ def create_app():
         cur = conn.cursor()
         try:
             cur.execute(
-                "SELECT DISTINCT season FROM football_matches WHERE league = %s ORDER BY season ASC;",
+                "SELECT DISTINCT season FROM football_matches WHERE league = ? ORDER BY season ASC;",
                 (league_name,),
             )
             rows = cur.fetchall()
@@ -136,7 +135,7 @@ def create_app():
         sort = request.args.get("sort", "match_date_asc")
 
         try:
-            date_from = parse_date("date_from", request.args.get("date_from"))  # <- fix
+            date_from = parse_date("date_from", request.args.get("date_from"))
             date_to = parse_date("date_to", request.args.get("date_to"))
             limit = parse_int("limit", request.args.get("limit"), default=20, min_v=1, max_v=200)
             offset = parse_int("offset", request.args.get("offset"), default=0, min_v=0)
@@ -152,28 +151,28 @@ def create_app():
         params = []
 
         if league:
-            where.append("league = %s")
+            where.append("league = ?")
             params.append(league)
 
         if season_raw:
             s = season_raw.strip()
             if s.isdigit():
-                where.append("(season = %s OR TRIM(CAST(season AS TEXT)) LIKE %s)")
+                where.append("(season = ? OR TRIM(CAST(season AS TEXT)) LIKE ?)")
                 params.extend([int(s), f"{s}%"])
             else:
-                where.append("TRIM(CAST(season AS TEXT)) = %s")
+                where.append("TRIM(CAST(season AS TEXT)) = ?")
                 params.append(s)
 
         if date_from:
-            where.append("match_date >= %s")
+            where.append("match_date >= ?")
             params.append(date_from)
 
         if date_to:
-            where.append("match_date <= %s")
+            where.append("match_date <= ?")
             params.append(date_to)
 
         if team:
-            where.append("(home_team = %s OR away_team = %s)")
+            where.append("(home_team = ? OR away_team = ?)")
             params.extend([team, team])
 
         if result == "home_win":
@@ -194,7 +193,7 @@ def create_app():
             FROM football_matches
             WHERE {where_sql}
             ORDER BY {order_sql}
-            LIMIT %s OFFSET %s;
+            LIMIT ? OFFSET ?;
         """
         count_sql = f"SELECT COUNT(*) FROM football_matches WHERE {where_sql};"
 
@@ -236,7 +235,7 @@ def create_app():
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute("SELECT * FROM football_matches WHERE id = %s;", (match_id,))
+            cur.execute("SELECT * FROM football_matches WHERE id = ?;", (match_id,))
             row = cur.fetchone()
             if row:
                 return jsonify(dict(row))

@@ -4,6 +4,7 @@ import pandas as pd
 from datetime import datetime
 import re
 
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "sports.db"
 

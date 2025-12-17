@@ -323,6 +323,136 @@ def create_app():
                 pass
             conn.close()
 
+    @app.get("/stats/h2h")
+    def h2h_stats():
+        league = request.args.get("league")
+        season = request.args.get("season")
+        home_team = request.args.get("home_team")
+        away_team = request.args.get("away_team")
+
+        if not league or not home_team or not away_team:
+            return jsonify({
+                "error": "Bad Request",
+                "message": "league, home_team and away_team are required"
+            }), 400
+
+        try:
+            last_n = parse_int("last", request.args.get("last"), default=10, min_v=1, max_v=50)
+        except ValueError as e:
+            return jsonify({"error": "Bad Request", "message": str(e)}), 400
+
+        where = ["league = ?"]
+        params = [league]
+
+        if season:
+            where.append("season = ?")
+            params.append(season)
+
+        # mecze dokładnie tych dwóch drużyn (w obie strony)
+        where.append("""
+            (
+                (home_team = ? AND away_team = ?)
+                OR
+                (home_team = ? AND away_team = ?)
+            )
+        """)
+        params.extend([home_team, away_team, away_team, home_team])
+
+        where_sql = " AND ".join(where)
+
+        sql = f"""
+            SELECT id, season, match_date, home_team, away_team, home_goals, away_goals
+            FROM football_matches
+            WHERE {where_sql}
+            ORDER BY match_date DESC
+            LIMIT ?;
+        """
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            cur.execute(sql, tuple(params + [last_n]))
+            rows = [dict(r) for r in cur.fetchall()]
+
+            if not rows:
+                return jsonify({
+                    "error": "Not Found",
+                    "message": "No head-to-head matches found for given filters"
+                }), 404
+
+            # bilans z perspektywy home_team (tego z query param)
+            w = d = l = 0
+            gf = ga = 0
+            counted = 0
+
+            def result_from_perspective(r: dict) -> str:
+                hg, ag = r["home_goals"], r["away_goals"]
+                if hg is None or ag is None:
+                    return "U"
+                # kto jest "nasz" w tym meczu?
+                if r["home_team"] == home_team:
+                    if hg > ag: return "W"
+                    if hg < ag: return "L"
+                    return "D"
+                else:
+                    # home_team grał jako away
+                    if ag > hg: return "W"
+                    if ag < hg: return "L"
+                    return "D"
+
+            def goals_from_perspective(r: dict) -> tuple[int | None, int | None]:
+                hg, ag = r["home_goals"], r["away_goals"]
+                if hg is None or ag is None:
+                    return None, None
+                if r["home_team"] == home_team:
+                    return hg, ag
+                return ag, hg
+
+            formatted = []
+            for r in rows:
+                res = result_from_perspective(r)
+                gfor, gagainst = goals_from_perspective(r)
+
+                if res != "U":
+                    counted += 1
+                    gf += gfor
+                    ga += gagainst
+                    if res == "W": w += 1
+                    elif res == "D": d += 1
+                    elif res == "L": l += 1
+
+                formatted.append({
+                    "id": r["id"],
+                    "league": league,
+                    "season": r.get("season"),
+                    "match_date": r["match_date"],
+                    "home_team": r["home_team"],
+                    "away_team": r["away_team"],
+                    "home_goals": r["home_goals"],
+                    "away_goals": r["away_goals"],
+                    "result_for_home_team_param": res,  # W/D/L/U z perspektywy home_team paramu
+                })
+
+            return jsonify({
+                "league": league,
+                "season": season,
+                "home_team": home_team,
+                "away_team": away_team,
+                "last": last_n,
+                "counted_games_with_score": counted,
+                "record_for_home_team": {"wins": w, "draws": d, "losses": l},
+                "goals_for_home_team": gf,
+                "goals_against_home_team": ga,
+                "matches": formatted,
+            })
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+            conn.close()
+
+
     # GET /matches?league=&season=&date_from=&date_to=&team=&result=&limit=&offset=&sort=
     @app.get("/matches")
     def get_matches():

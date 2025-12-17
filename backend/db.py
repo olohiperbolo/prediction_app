@@ -2,10 +2,15 @@ import sqlite3
 from pathlib import Path
 import pandas as pd
 from datetime import datetime
+import re
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "sports.db"
 
+def detect_season_from_filename(filename_upper: str) -> str | None:
+    years = re.findall(r"(19\d{2}|20\d{2})", filename_upper)
+    return years[-1] if years else None
 
 def get_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -21,6 +26,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS football_matches (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             league TEXT NOT NULL,
+            season TEXT,
             home_team TEXT NOT NULL,
             away_team TEXT NOT NULL,
             match_date TEXT NOT NULL,
@@ -53,10 +59,9 @@ def parse_date_safe(x: str):
     return None
 
 
-def import_football_csv(csv_path: Path, league_name: str):
+def import_football_csv(csv_path: Path, league_name: str, season: str | None):
     df = pd.read_csv(csv_path)
 
-    # Mapowanie nazw kolumn z różnych wersji plików
     rename_map = {
         "HomeTeam": "home_team",
         "AwayTeam": "away_team",
@@ -68,7 +73,6 @@ def import_football_csv(csv_path: Path, league_name: str):
         "AG": "away_goals",
         "Date": "match_date",
     }
-
     df = df.rename(columns=rename_map)
 
     required_cols = ["home_team", "away_team", "match_date"]
@@ -76,31 +80,27 @@ def import_football_csv(csv_path: Path, league_name: str):
         if col not in df.columns:
             raise ValueError(f"Brakuje kolumny '{col}' w pliku: {csv_path.name}")
 
-    # Jeśli nie ma goli, dodaj puste
     if "home_goals" not in df.columns:
         df["home_goals"] = None
     if "away_goals" not in df.columns:
         df["away_goals"] = None
 
-    # Usuń wiersze bez drużyn
     df = df.dropna(subset=["home_team", "away_team"])
 
-    # Liga
     df["league"] = league_name
+    df["season"] = season
 
-    # Data
     df["match_date"] = df["match_date"].apply(parse_date_safe)
     df = df.dropna(subset=["match_date"])
 
-    # Docelowe kolumny
-    df_final = df[["league", "home_team", "away_team", "match_date", "home_goals", "away_goals"]]
+    df_final = df[["league", "season", "home_team", "away_team", "match_date", "home_goals", "away_goals"]]
 
-    # Zapis do bazy
     conn = get_connection()
     df_final.to_sql("football_matches", conn, if_exists="append", index=False)
     conn.close()
 
-    print(f"Imported {len(df_final)} rows from {csv_path.name} ({league_name})")
+    print(f"Imported {len(df_final)} rows from {csv_path.name} ({league_name}, season={season})")
+
 
 
 def detect_league_from_filename(filename_upper: str):
@@ -130,7 +130,6 @@ def detect_league_from_filename(filename_upper: str):
 
     return None
 
-
 def import_all_csv():
     folder_path = BASE_DIR / "data" / "football_csv"
     csv_files = sorted(folder_path.glob("*.csv"))
@@ -145,14 +144,15 @@ def import_all_csv():
     for file_path in csv_files:
         filename_upper = file_path.name.upper()
         league = detect_league_from_filename(filename_upper)
+        season = detect_season_from_filename(filename_upper)
 
-        print("➡️  Plik:", file_path.name, "| wykryta liga:", league)
+        print("Plik:", file_path.name, "| wykryta liga:", league, "| sezon:", season)
 
         if league is None:
             print("!Pomijam plik (nieznana liga):", file_path.name)
             continue
 
-        import_football_csv(file_path, league)
+        import_football_csv(file_path, league, season)
 
 
 if __name__ == "__main__":

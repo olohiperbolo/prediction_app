@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import os
 from datetime import date
 from flask import Flask, jsonify, request
@@ -37,6 +36,11 @@ TEAM_DISPLAY: dict[str, str] = {
     "Hoffenheim": "TSG Hoffenheim",
     "Holstein Kiel": "Holstein Kiel",
     "Stuttgart": "VfB Stuttgart",
+    "FC Koln": "1. FC Köln",
+    "Hamburg": "Hamburger SV",
+    "Hertha": "Hertha BSC",
+    "Schalke 04": "FC Schalke 04",
+
 
     # ===== Premier League / England =====
     "Man City": "Manchester City",
@@ -317,6 +321,7 @@ def create_app():
     def get_teams():
         league = request.args.get("league")
         season = request.args.get("season")
+        pretty = request.args.get("pretty", "0") in ("1", "true", "True", "yes")
 
         where = ["1=1"]
         params = []
@@ -342,16 +347,23 @@ def create_app():
         conn = get_connection()
         cur = conn.cursor()
         try:
-            cur.execute(sql, tuple(params + params))
-            rows = cur.fetchall()
-            teams = [first_col(r, "team") for r in rows]
-            return jsonify(teams)
+            cur.execute(sql, tuple(params + params))  # where_sql jest 2x
+            teams = [first_col(r, "team") for r in cur.fetchall()]
         finally:
             try:
                 cur.close()
             except Exception:
                 pass
             conn.close()
+
+        if not pretty:
+            return jsonify(teams)
+
+        items = [{"value": t, "label": display_team(t)} for t in teams]
+        # dla UI lepiej sortować po label
+        items.sort(key=lambda x: x["label"])
+        return jsonify(items)
+
 
     @app.get("/stats/team")
     def team_stats():

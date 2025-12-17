@@ -42,10 +42,6 @@ def clear_football_matches():
 
 
 def parse_date_safe(x: str):
-    """
-    Football-Data.co.uk ma różne formaty daty zależnie od sezonu/ligi.
-    Najczęstsze: dd/mm/YYYY, dd/mm/YY, YYYY-mm-dd
-    """
     x = str(x).strip()
 
     for fmt in ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d"):
@@ -80,7 +76,7 @@ def import_football_csv(csv_path: Path, league_name: str):
         if col not in df.columns:
             raise ValueError(f"Brakuje kolumny '{col}' w pliku: {csv_path.name}")
 
-    # Jeśli nie ma goli (czasem bywa), dodaj puste
+    # Jeśli nie ma goli, dodaj puste
     if "home_goals" not in df.columns:
         df["home_goals"] = None
     if "away_goals" not in df.columns:
@@ -104,7 +100,7 @@ def import_football_csv(csv_path: Path, league_name: str):
     df_final.to_sql("football_matches", conn, if_exists="append", index=False)
     conn.close()
 
-    print(f"✅ Imported {len(df_final)} rows from {csv_path.name} ({league_name})")
+    print(f"Imported {len(df_final)} rows from {csv_path.name} ({league_name})")
 
 
 def detect_league_from_filename(filename_upper: str):
@@ -113,14 +109,14 @@ def detect_league_from_filename(filename_upper: str):
     Obsługuje zarówno Twoje nazwy (PL/LALIGA/...) jak i kody Football-Data (E0/SP1/...).
     """
     league_map = {
-        # Twoje tagi (jeśli tak nazwałeś pliki)
+        #tagi
         "PL": "Premier League",
         "LALIGA": "La Liga",
         "SA": "Serie A",
         "BUNDES": "Bundesliga",
         "LEAGUE": "Ligue 1",
 
-        # Kody Football-Data.co.uk (bardzo częste)
+        # Kody z csv
         "E0": "Premier League",
         "SP1": "La Liga",
         "I1": "Serie A",
@@ -139,11 +135,11 @@ def import_all_csv():
     folder_path = BASE_DIR / "data" / "football_csv"
     csv_files = sorted(folder_path.glob("*.csv"))
 
-    print("📁 Szukam CSV w folderze:", folder_path)
-    print("📄 Znalezione pliki:", [p.name for p in csv_files])
+    print("Szukam CSV w folderze:", folder_path)
+    print("Znalezione pliki:", [p.name for p in csv_files])
 
     if not csv_files:
-        print("❌ Nie znaleziono żadnych plików .csv w data/football_csv/")
+        print("XXX Nie znaleziono żadnych plików .csv w data/football_csv/")
         return
 
     for file_path in csv_files:
@@ -153,7 +149,7 @@ def import_all_csv():
         print("➡️  Plik:", file_path.name, "| wykryta liga:", league)
 
         if league is None:
-            print("⚠️  Pomijam plik (nieznana liga):", file_path.name)
+            print("!Pomijam plik (nieznana liga):", file_path.name)
             continue
 
         import_football_csv(file_path, league)
@@ -161,16 +157,16 @@ def import_all_csv():
 
 if __name__ == "__main__":
     init_db()
-    clear_football_matches()  # żeby nie dublować importu
+    clear_football_matches()
 
     import_all_csv()
 
-    # szybki test ile weszło
+    # test ile weszło
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT COUNT(*) FROM football_matches;")
     total = cur.fetchone()[0]
     conn.close()
 
-    print("✅ Done. Rows in football_matches:", total)
+    print("Done. Rows in football_matches:", total)
     print("DB_PATH:", DB_PATH)

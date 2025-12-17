@@ -17,6 +17,180 @@ ALLOWED_SORT = {
 ALLOWED_RESULT = {"home_win", "away_win", "draw"}
 
 
+TEAM_DISPLAY: dict[str, str] = {
+    # ===== Bundesliga =====
+    "Ein Frankfurt": "Eintracht Frankfurt",
+    "M'gladbach": "Borussia Mönchengladbach",
+    "Leverkusen": "Bayer Leverkusen",
+    "Bayern Munich": "FC Bayern München",
+    "RB Leipzig": "RB Leipzig",
+    "St Pauli": "FC St. Pauli",
+    "Union Berlin": "1. FC Union Berlin",
+    "Werder Bremen": "SV Werder Bremen",
+    "Wolfsburg": "VfL Wolfsburg",
+    "Mainz": "1. FSV Mainz 05",
+    "Augsburg": "FC Augsburg",
+    "Bochum": "VfL Bochum",
+    "Dortmund": "Borussia Dortmund",
+    "Freiburg": "SC Freiburg",
+    "Heidenheim": "1. FC Heidenheim",
+    "Hoffenheim": "TSG Hoffenheim",
+    "Holstein Kiel": "Holstein Kiel",
+    "Stuttgart": "VfB Stuttgart",
+
+    # ===== Premier League / England =====
+    "Man City": "Manchester City",
+    "Man United": "Manchester United",
+    "Spurs": "Tottenham Hotspur",
+    "Tottenham": "Tottenham Hotspur",
+    "Wolves": "Wolverhampton Wanderers",
+    "Nott'm Forest": "Nottingham Forest",
+    "Newcastle": "Newcastle United",
+    "West Ham": "West Ham United",
+    "Sheffield United": "Sheffield United",
+    "Leeds": "Leeds United",
+    "Leicester": "Leicester City",
+    "Norwich": "Norwich City",
+    "Ipswich": "Ipswich Town",
+    "Bournemouth": "AFC Bournemouth",
+    "Brighton": "Brighton & Hove Albion",
+    "Crystal Palace": "Crystal Palace",
+    "Aston Villa": "Aston Villa",
+    "Nottm Forest": "Nottingham Forest",
+    "Man Utd": "Manchester United",
+    "Man United ": "Manchester United",
+    "Arsenal": "Arsenal",
+    "Brentford": "Brentford",
+    "Burnley": "Burnley",
+    "Chelsea": "Chelsea",
+    "Everton": "Everton",
+    "Fulham": "Fulham",
+    "Liverpool": "Liverpool",
+    "Luton": "Luton Town",
+    "Southampton": "Southampton",
+    "Sunderland": "Sunderland",
+
+    # ===== La Liga / Spain =====
+    "Ath Madrid": "Atlético Madrid",
+    "Ath Bilbao": "Athletic Club",
+    "Sociedad": "Real Sociedad",
+    "Real Madrid": "Real Madrid",
+    "Barcelona": "FC Barcelona",
+    "Sevilla": "Sevilla FC",
+    "Valencia": "Valencia CF",
+    "Villarreal": "Villarreal CF",
+    "Betis": "Real Betis",
+    "Celta": "Celta Vigo",
+    "Alaves": "Deportivo Alavés",
+    "Vallecano": "Rayo Vallecano",
+    "Espanol": "RCD Espanyol",
+    "La Coruna": "Deportivo La Coruña",
+    "Las Palmas": "UD Las Palmas",
+    "Almeria": "UD Almería",
+    "Cadiz": "Cádiz CF",
+    "Elche": "Elche CF",
+    "Getafe": "Getafe CF",
+    "Girona": "Girona FC",
+    "Granada": "Granada CF",
+    "Leganes": "CD Leganés",
+    "Levante": "Levante UD",
+    "Mallorca": "RCD Mallorca",
+    "Osasuna": "CA Osasuna",
+    "Oviedo": "Real Oviedo",
+    "Valladolid": "Real Valladolid",
+
+    # ===== Serie A / Italy =====
+    "Inter": "Inter Milan",
+    "Milan": "AC Milan",
+    "Roma": "AS Roma",
+    "Lazio": "SS Lazio",
+    "Juventus": "Juventus",
+    "Napoli": "SSC Napoli",
+    "Atalanta": "Atalanta",
+    "Fiorentina": "Fiorentina",
+    "Torino": "Torino",
+    "Udinese": "Udinese",
+    "Verona": "Hellas Verona",
+    "Sassuolo": "Sassuolo",
+    "Cagliari": "Cagliari",
+    "Genoa": "Genoa",
+    "Bologna": "Bologna",
+    "Empoli": "Empoli",
+    "Lecce": "Lecce",
+    "Monza": "Monza",
+    "Salernitana": "Salernitana",
+    "Frosinone": "Frosinone",
+    "Spezia": "Spezia",
+    "Cremonese": "Cremonese",
+    "Venezia": "Venezia",
+    "Parma": "Parma",
+    "Como": "Como",
+    "Pisa": "Pisa",
+
+    # ===== Ligue 1 / France =====
+    "Paris SG": "Paris Saint-Germain",
+    "PSG": "Paris Saint-Germain",
+    "Marseille": "Olympique de Marseille",
+    "Lyon": "Olympique Lyonnais",
+    "Monaco": "AS Monaco",
+    "Lille": "LOSC Lille",
+    "Nice": "OGC Nice",
+    "Rennes": "Stade Rennais",
+    "Nantes": "FC Nantes",
+    "Strasbourg": "RC Strasbourg",
+    "Reims": "Stade de Reims",
+    "Montpellier": "Montpellier HSC",
+    "Toulouse": "Toulouse FC",
+    "Lorient": "FC Lorient",
+    "Brest": "Stade Brestois 29",
+    "Lens": "RC Lens",
+    "Metz": "FC Metz",
+    "Le Havre": "Le Havre AC",
+    "Clermont": "Clermont Foot",
+    "Auxerre": "AJ Auxerre",
+    "Angers": "Angers SCO",
+    "St Etienne": "AS Saint-Étienne",
+    "Saint Etienne": "AS Saint-Étienne",
+    "Paris FC": "Paris FC",
+}
+
+def display_team(name: str) -> str:
+    if name is None:
+        return name
+    n = str(name).strip()
+    return TEAM_DISPLAY.get(n, n)
+
+def check_team_alias_coverage() -> None:
+    """
+    Wypisuje w konsoli drużyny, które są w DB, a nie mają wpisu w TEAM_DISPLAY.
+    Dzięki temu masz pewność, że aliasy obejmują wszystkie sezony/ligi jakie masz w bazie.
+    """
+    conn = get_connection()
+    cur = conn.cursor()
+    try:
+        cur.execute("""
+            SELECT DISTINCT team FROM (
+                SELECT home_team AS team FROM football_matches
+                UNION
+                SELECT away_team AS team FROM football_matches
+            )
+            ORDER BY team ASC;
+        """)
+        teams = [r[0] for r in cur.fetchall()]
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        conn.close()
+
+    missing = [t for t in teams if t not in TEAM_DISPLAY]
+    if missing:
+        print("\n[TEAM_DISPLAY] Brakuje aliasów dla:", missing, "\n")
+    else:
+        print("\n[TEAM_DISPLAY] OK: masz aliasy dla wszystkich drużyn w DB.\n")
+
+
 def parse_int(name: str, raw: str | None, default: int, min_v: int | None = None, max_v: int | None = None) -> int:
     if raw is None or raw == "":
         x = default
@@ -668,6 +842,9 @@ def create_app():
             except Exception:
                 pass
             conn.close()
+
+
+    check_team_alias_coverage()
 
     return app
 

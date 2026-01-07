@@ -58,20 +58,17 @@ export default function App() {
         <div className="brand">Moja aplikacja</div>
 
       <div className="topnav-center">
-        <button
-          onClick={() => setTab("home")}
-          className={tab === "home" ? "active" : ""}
-        >
+        <button onClick={() => setTab("home")} className={tab === "home" ? "active" : ""}>
           Home
         </button>
-
-        <button onClick={() => setTab("teams")} disabled={tab === "teams"}>
+        <button onClick={() => setTab("teams")} className={tab === "teams" ? "active" : ""}>
           Teams
         </button>
-        <button onClick={() => setTab("about")} disabled={tab === "about"}>
+        <button onClick={() => setTab("about")} className={tab === "about" ? "active" : ""}>
           About
         </button>
       </div>
+
 
       <div className="topnav-right" />
     </nav>

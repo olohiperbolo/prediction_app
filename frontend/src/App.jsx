@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import "./App.css";
+
 
 const API = import.meta.env.VITE_API_URL ?? "/api";
 
@@ -50,25 +52,33 @@ export default function App() {
   }, [tab]);
 
   return (
-    <div style={{ fontFamily: "system-ui", padding: 24, maxWidth: 900, margin: "0 auto" }}>
-      <header style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-        <h1 style={{ margin: 0 }}>Moja aplikacja</h1>
+  <div className="app">
+    <header className="app-header">
+      <nav className="topnav">
+        <div className="brand">Moja aplikacja</div>
 
-        <nav style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => setTab("home")} disabled={tab === "home"}>
-            Home
-          </button>
-          <button onClick={() => setTab("teams")} disabled={tab === "teams"}>
-            Teams
-          </button>
-          <button onClick={() => setTab("about")} disabled={tab === "about"}>
-            About
-          </button>
-        </nav>
-      </header>
+      <div className="topnav-center">
+        <button
+          onClick={() => setTab("home")}
+          className={tab === "home" ? "active" : ""}
+        >
+          Home
+        </button>
 
-      <hr style={{ margin: "16px 0" }} />
+        <button onClick={() => setTab("teams")} disabled={tab === "teams"}>
+          Teams
+        </button>
+        <button onClick={() => setTab("about")} disabled={tab === "about"}>
+          About
+        </button>
+      </div>
 
+      <div className="topnav-right" />
+    </nav>
+  </header>
+
+
+    <main className="app-main">
       {tab === "home" && (
         <section>
           <h2>Start</h2>
@@ -97,9 +107,7 @@ export default function App() {
               {teams.length === 0 ? (
                 <li>(brak danych)</li>
               ) : (
-                teams.map((t, i) => (
-                  <li key={t.value ?? i}>{t.label ?? t.value}</li>
-                ))
+                teams.map((t, i) => <li key={t.value ?? i}>{t.label ?? t.value}</li>)
               )}
             </ul>
           )}
@@ -112,6 +120,8 @@ export default function App() {
           <p>Tu możesz wrzucić opis projektu, linki, itd.</p>
         </section>
       )}
-    </div>
-  );
+    </main>
+  </div>
+);
+
 }

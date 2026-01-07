@@ -97,7 +97,11 @@ export default function App() {
               {teams.length === 0 ? (
                 <li>(brak danych)</li>
               ) : (
-                teams.map((t, i) => <li key={t.id ?? i}>{t.name ?? JSON.stringify(t)}</li>)
+                teams.map((t, i) => (
+                  <li key={typeof t === "object" && t !== null ? (t.id ?? i) : i}>
+                    {typeof t === "string" ? t : (t.name ?? t.team ?? JSON.stringify(t))}
+                  </li>
+                ))
               )}
             </ul>
           )}

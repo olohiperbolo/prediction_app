@@ -241,7 +241,8 @@ def first_col(row, key: str | None = None):
 
 def create_app():
     app = Flask(__name__)
-    CORS(app)
+    CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
+
 
     # --- Error handling: ALWAYS JSON ---------------------------------------
 

@@ -86,7 +86,7 @@ export default function App() {
     <div className="app">
       <header className="app-header">
         <nav className="topnav">
-          <div className="brand">Moja aplikacja</div>
+          <div className="brand">Prediction Application</div>
 
           <div className="topnav-center">
             <button onClick={() => setTab("home")} className={tab === "home" ? "active" : ""}>

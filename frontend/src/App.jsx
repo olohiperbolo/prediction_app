@@ -149,11 +149,14 @@ export default function App() {
                           {teamsSorted.length === 0 ? (
                             <p style={{ opacity: 0.7 }}>(brak drużyn)</p>
                           ) : (
-                            <ul>
+                            <div className="teams-grid" role="table" aria-label={`Teams ${lg}`}>
                               {teamsSorted.map((t, i) => (
-                                <li key={t.value ?? `${lg}-${i}`}>{t.label ?? t.value}</li>
+                                <div className="team-cell" role="row" key={t.value ?? `${lg}-${i}`}>
+                                  {t.label ?? t.value}
+                                </div>
                               ))}
-                            </ul>
+                            </div>
+
                           )}
                         </section>
                       );

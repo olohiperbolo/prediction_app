@@ -99,6 +99,41 @@
   margin: 0 0 10px;
   font-weight: 800;
 }
+.teams-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr));
+  gap: 8px;
+}
+
+.team-cell {
+  border: 1px solid #e5e5e5;
+  border-radius: 10px;
+  padding: 10px 12px;
+  background: #fff;
+}
+
+.team-cell:hover {
+  background: #f7f7f7;
+}
+.league-title {
+  position: sticky;
+  top: 72px; /* dopasuj do wysokości headera */
+  background: white;
+  padding: 6px 0;
+  z-index: 1;
+}
+
+@media (max-width: 900px) {
+  .teams-grid {
+    grid-template-columns: repeat(2, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 520px) {
+  .teams-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 @keyframes logo-spin {
   from {

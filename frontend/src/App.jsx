@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 
-const API = import.meta.env.VITE_API_URL || "http://localhost:3000";
+const API = import.meta.env.VITE_API_URL ?? "/api";
+
 
 export default function App() {
   const [tab, setTab] = useState("home");
@@ -9,7 +10,6 @@ export default function App() {
   const [teams, setTeams] = useState([]);
 
   useEffect(() => {
-    // ładujemy dane tylko gdy jesteśmy w zakładce "teams"
     if (tab !== "teams") return;
 
     const controller = new AbortController();
@@ -19,8 +19,19 @@ export default function App() {
         setLoading(true);
         setError("");
 
-        const res = await fetch(`${API}/teams`, { signal: controller.signal });
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const url = `${API}/teams`;
+        console.log("Pobieram z:", url);
+
+        const res = await fetch(url, {
+          signal: controller.signal,
+          cache: "no-store",
+        });
+
+        if (!res.ok) {
+          const text = await res.text();
+          console.error("HTTP", res.status, "Body:", text.slice(0, 300));
+          throw new Error(`HTTP ${res.status}`);
+        }
 
         const data = await res.json();
         setTeams(Array.isArray(data) ? data : []);

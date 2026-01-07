@@ -19,7 +19,7 @@ export default function App() {
         setLoading(true);
         setError("");
 
-        const url = `${API}/teams`;
+        const url = `${API}/teams?pretty=1`;
         console.log("Pobieram z:", url);
 
         const res = await fetch(url, {
@@ -98,9 +98,7 @@ export default function App() {
                 <li>(brak danych)</li>
               ) : (
                 teams.map((t, i) => (
-                  <li key={typeof t === "object" && t !== null ? (t.id ?? i) : i}>
-                    {typeof t === "string" ? t : (t.name ?? t.team ?? JSON.stringify(t))}
-                  </li>
+                  <li key={t.value ?? i}>{t.label ?? t.value}</li>
                 ))
               )}
             </ul>

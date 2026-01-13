@@ -1,6 +1,75 @@
 #root {
   min-height: 100vh;
 }
+.card{
+  padding: 16px;
+  border: 1px solid #e5e5e5;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.formGrid{
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.formGrid label{
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.formGrid select{
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: white;
+}
+
+.btn{
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid #ddd;
+  background: #111;
+  color: white;
+  cursor: pointer;
+}
+
+.btn:disabled{
+  opacity: .6;
+  cursor: not-allowed;
+}
+
+.error{
+  margin-top: 10px;
+  color: #b00020;
+}
+
+.resultBox{
+  margin-top: 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.resultRow{
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.simpleTable{
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.simpleTable th, .simpleTable td{
+  border: 1px solid #e5e5e5;
+  padding: 10px;
+  text-align: center;
+}
+
 
 .app{
   min-height: 100vh;

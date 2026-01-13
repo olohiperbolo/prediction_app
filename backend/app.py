@@ -1,12 +1,17 @@
 from __future__ import annotations
+
 import os
+import math
 from datetime import date
+
 from flask import Flask, jsonify, request
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
 
 from db import get_connection
 
+
+MAX_GOALS = 10
 
 ALLOWED_SORT = {
     "match_date_asc": "match_date ASC",
@@ -40,7 +45,6 @@ TEAM_DISPLAY: dict[str, str] = {
     "Hamburg": "Hamburger SV",
     "Hertha": "Hertha BSC",
     "Schalke 04": "FC Schalke 04",
-
 
     # ===== Premier League / England =====
     "Man City": "Manchester City",
@@ -158,16 +162,181 @@ TEAM_DISPLAY: dict[str, str] = {
     "Paris FC": "Paris FC",
 }
 
+
+# =========================
+# Poisson model helpers
+# =========================
+
+def safe_float(x, default=0.0):
+    try:
+        if x is None:
+            return default
+        return float(x)
+    except Exception:
+        return default
+
+
+def poisson_pmf(k: int, lam: float) -> float:
+    if lam <= 0:
+        return 1.0 if k == 0 else 0.0
+    return math.exp(-lam) * (lam ** k) / math.factorial(k)
+
+
+def score_matrix(lh: float, la: float, max_goals: int = MAX_GOALS):
+    ph = [poisson_pmf(i, lh) for i in range(max_goals + 1)]
+    pa = [poisson_pmf(j, la) for j in range(max_goals + 1)]
+    return [[ph[i] * pa[j] for j in range(max_goals + 1)] for i in range(max_goals + 1)]
+
+
+def outcome_probs(mat):
+    p_home = 0.0
+    p_draw = 0.0
+    p_away = 0.0
+    best = (0, 0, -1.0)  # (hg, ag, p)
+
+    n = len(mat) - 1
+    for hg in range(n + 1):
+        for ag in range(n + 1):
+            p = mat[hg][ag]
+            if p > best[2]:
+                best = (hg, ag, p)
+            if hg > ag:
+                p_home += p
+            elif hg == ag:
+                p_draw += p
+            else:
+                p_away += p
+
+    return p_home, p_draw, p_away, {"home_goals": best[0], "away_goals": best[1], "p": best[2]}
+
+
+def fetch_matches_for_predict(conn, league: str, season: str | None, limit: int = 2000):
+    where = [
+        "league = ?",
+        "home_goals IS NOT NULL",
+        "away_goals IS NOT NULL",
+    ]
+    params: list[object] = [league]
+
+    if season:
+        where.append("season = ?")
+        params.append(season)
+
+    where_sql = " AND ".join(where)
+
+    sql = f"""
+        SELECT home_team, away_team, home_goals, away_goals
+        FROM football_matches
+        WHERE {where_sql}
+        ORDER BY match_date DESC
+        LIMIT ?;
+    """
+    cur = conn.cursor()
+    cur.execute(sql, tuple(params + [limit]))
+    return [dict(r) for r in cur.fetchall()]
+
+
+def compute_lambdas_poisson(rows: list[dict], home_team: str, away_team: str):
+    """
+    Prosty Poisson MVP:
+    - średnie gole ligowe (home/away)
+    - attack/defense ratios per team (home i away osobno)
+    - lambda_home = avg_home_goals * home_attack(home) * away_def_ratio(away)
+    - lambda_away = avg_away_goals * away_attack(away) * home_def_ratio(home)
+    """
+    if not rows:
+        return 1.2, 1.0
+
+    total_hg = 0.0
+    total_ag = 0.0
+    n = 0
+
+    team_stats: dict[str, dict] = {}
+
+    def ensure(t: str):
+        if t not in team_stats:
+            team_stats[t] = {
+                "hs": 0.0, "hc": 0.0, "hn": 0,  # home scored/conceded/count
+                "as": 0.0, "ac": 0.0, "an": 0,  # away scored/conceded/count
+            }
+
+    for r in rows:
+        h = r["home_team"]
+        a = r["away_team"]
+        hg = safe_float(r["home_goals"])
+        ag = safe_float(r["away_goals"])
+
+        total_hg += hg
+        total_ag += ag
+        n += 1
+
+        ensure(h)
+        ensure(a)
+
+        team_stats[h]["hs"] += hg
+        team_stats[h]["hc"] += ag
+        team_stats[h]["hn"] += 1
+
+        team_stats[a]["as"] += ag
+        team_stats[a]["ac"] += hg
+        team_stats[a]["an"] += 1
+
+    avg_lg_home = total_hg / max(n, 1)
+    avg_lg_away = total_ag / max(n, 1)
+
+    # shrinkage (żeby nie wariowało przy małej próbce)
+    K = 6
+
+    def home_attack(t: str) -> float:
+        s = team_stats.get(t)
+        if not s or s["hn"] == 0:
+            return 1.0
+        rate = (s["hs"] + K * avg_lg_home) / (s["hn"] + K)
+        return rate / max(avg_lg_home, 0.01)
+
+    def home_defense_ratio(t: str) -> float:
+        s = team_stats.get(t)
+        if not s or s["hn"] == 0:
+            return 1.0
+        rate = (s["hc"] + K * avg_lg_away) / (s["hn"] + K)  # conceded at home
+        return rate / max(avg_lg_away, 0.01)
+
+    def away_attack(t: str) -> float:
+        s = team_stats.get(t)
+        if not s or s["an"] == 0:
+            return 1.0
+        rate = (s["as"] + K * avg_lg_away) / (s["an"] + K)
+        return rate / max(avg_lg_away, 0.01)
+
+    def away_defense_ratio(t: str) -> float:
+        s = team_stats.get(t)
+        if not s or s["an"] == 0:
+            return 1.0
+        rate = (s["ac"] + K * avg_lg_home) / (s["an"] + K)  # conceded away
+        return rate / max(avg_lg_home, 0.01)
+
+    lh = avg_lg_home * home_attack(home_team) * away_defense_ratio(away_team)
+    la = avg_lg_away * away_attack(away_team) * home_defense_ratio(home_team)
+
+    lh = max(0.2, min(lh, 4.5))
+    la = max(0.2, min(la, 4.5))
+    return lh, la
+
+
+# =========================
+# Existing helpers
+# =========================
+
 def display_team(name: str) -> str:
     if name is None:
         return name
     n = str(name).strip()
     return TEAM_DISPLAY.get(n, n)
 
+
 def check_team_alias_coverage() -> None:
     """
     Wypisuje w konsoli drużyny, które są w DB, a nie mają wpisu w TEAM_DISPLAY.
-    Dzięki temu masz pewność, że aliasy obejmują wszystkie sezony/ligi jakie masz w bazie.
     """
     conn = get_connection()
     cur = conn.cursor()
@@ -243,18 +412,14 @@ def create_app():
     app = Flask(__name__)
     CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
-
     # --- Error handling: ALWAYS JSON ---------------------------------------
 
     @app.errorhandler(HTTPException)
     def handle_http_exception(e: HTTPException):
-        # e.code: 400/404/405...
         return jsonify({"error": e.name, "message": e.description}), e.code
 
     @app.errorhandler(Exception)
     def handle_unhandled_exception(e: Exception):
-        # Nie wyświetlamy stacktrace w odpowiedzi API
-        # (stacktrace i tak masz w konsoli w trybie debug)
         return jsonify({"error": "Internal Server Error", "message": "Unexpected error"}), 500
 
     # --- Routes ------------------------------------------------------------
@@ -303,7 +468,6 @@ def create_app():
         conn = get_connection()
         cur = conn.cursor()
         try:
-            # SQLite placeholder = ?
             cur.execute(
                 "SELECT DISTINCT season FROM football_matches WHERE league = ? ORDER BY season ASC;",
                 (league_name,),
@@ -361,10 +525,89 @@ def create_app():
             return jsonify(teams)
 
         items = [{"value": t, "label": display_team(t)} for t in teams]
-        # dla UI lepiej sortować po label
         items.sort(key=lambda x: x["label"])
         return jsonify(items)
 
+    # ===== NEW: Poisson prediction (Option A) =====
+    @app.post("/predict")
+    def predict():
+        data = request.get_json(silent=True) or {}
+
+        league = (data.get("league") or "").strip()
+        season = (data.get("season") or "").strip() or None
+        home_team = (data.get("home_team") or "").strip()
+        away_team = (data.get("away_team") or "").strip()
+
+        if not league or not home_team or not away_team:
+            return jsonify({"error": "Bad Request", "message": "league, home_team, away_team are required"}), 400
+        if home_team == away_team:
+            return jsonify({"error": "Bad Request", "message": "Choose two different teams"}), 400
+
+        conn = get_connection()
+        cur = conn.cursor()
+        try:
+            # Walidacja: czy teams istnieją w lidze (+ sezon jeśli podany)
+            where = ["league = ?"]
+            params: list[object] = [league]
+            if season:
+                where.append("season = ?")
+                params.append(season)
+            where_sql = " AND ".join(where)
+
+            cur.execute(
+                f"""
+                SELECT 1
+                FROM football_matches
+                WHERE {where_sql}
+                  AND (home_team = ? OR away_team = ?)
+                LIMIT 1;
+                """,
+                tuple(params + [home_team, home_team]),
+            )
+            if cur.fetchone() is None:
+                return jsonify({"error": "Bad Request", "message": "home_team not found in selected league/season"}), 400
+
+            cur.execute(
+                f"""
+                SELECT 1
+                FROM football_matches
+                WHERE {where_sql}
+                  AND (home_team = ? OR away_team = ?)
+                LIMIT 1;
+                """,
+                tuple(params + [away_team, away_team]),
+            )
+            if cur.fetchone() is None:
+                return jsonify({"error": "Bad Request", "message": "away_team not found in selected league/season"}), 400
+
+            rows = fetch_matches_for_predict(conn, league, season, limit=2000)
+            lh, la = compute_lambdas_poisson(rows, home_team, away_team)
+
+            mat = score_matrix(lh, la, max_goals=MAX_GOALS)
+            p_home, p_draw, p_away, best = outcome_probs(mat)
+
+            return jsonify({
+                "league": league,
+                "season": season,
+                "home_team": home_team,
+                "away_team": away_team,
+                "home_team_label": display_team(home_team),
+                "away_team_label": display_team(away_team),
+                "lambda_home": lh,
+                "lambda_away": la,
+                "p_home": p_home,
+                "p_draw": p_draw,
+                "p_away": p_away,
+                "most_likely_score": best,
+                "max_goals": MAX_GOALS,
+                "training_matches_used": len(rows),
+            })
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+            conn.close()
 
     @app.get("/stats/team")
     def team_stats():
@@ -386,7 +629,6 @@ def create_app():
         conn = get_connection()
         cur = conn.cursor()
         try:
-            # 1) ALL matches for team in league+season
             cur.execute(
                 """
                 SELECT
@@ -405,10 +647,8 @@ def create_app():
                     "message": "No matches found for given league/season/team"
                 }), 404
 
-            # Helpers
             def outcome_for_team(r: dict) -> str:
                 hg, ag = r["home_goals"], r["away_goals"]
-                # jeśli braki w golach (None) - traktuj jako unknown
                 if hg is None or ag is None:
                     return "U"
                 if r["home_team"] == team:
@@ -428,11 +668,9 @@ def create_app():
                     return hg, ag
                 return ag, hg
 
-            # 2) Aggregate stats
             played = 0
             wins = draws = losses = 0
             gf = ga = 0
-            known_score_games = 0
 
             home_played = away_played = 0
             home_w = home_d = home_l = 0
@@ -441,13 +679,12 @@ def create_app():
             for r in rows:
                 out = outcome_for_team(r)
                 if out == "U":
-                    continue  # pomijamy mecze bez wyniku
+                    continue
 
                 played += 1
                 gfor, gagainst = goals_for_against(r)
                 gf += gfor
                 ga += gagainst
-                known_score_games += 1
 
                 is_home = (r["home_team"] == team)
                 if is_home:
@@ -468,7 +705,6 @@ def create_app():
                     if is_home: home_l += 1
                     else: away_l += 1
 
-            # 3) Last N matches (with results)
             last_matches_src = [r for r in rows if r["home_goals"] is not None and r["away_goals"] is not None]
             last_matches = last_matches_src[-last_n:] if last_matches_src else []
             form = "".join(outcome_for_team(r) for r in last_matches)
@@ -535,7 +771,6 @@ def create_app():
             where.append("season = ?")
             params.append(season)
 
-        # mecze dokładnie tych dwóch drużyn (w obie strony)
         where.append("""
             (
                 (home_team = ? AND away_team = ?)
@@ -567,7 +802,6 @@ def create_app():
                     "message": "No head-to-head matches found for given filters"
                 }), 404
 
-            # bilans z perspektywy home_team (tego z query param)
             w = d = l = 0
             gf = ga = 0
             counted = 0
@@ -576,13 +810,11 @@ def create_app():
                 hg, ag = r["home_goals"], r["away_goals"]
                 if hg is None or ag is None:
                     return "U"
-                # kto jest "nasz" w tym meczu?
                 if r["home_team"] == home_team:
                     if hg > ag: return "W"
                     if hg < ag: return "L"
                     return "D"
                 else:
-                    # home_team grał jako away
                     if ag > hg: return "W"
                     if ag < hg: return "L"
                     return "D"
@@ -617,7 +849,7 @@ def create_app():
                     "away_team": r["away_team"],
                     "home_goals": r["home_goals"],
                     "away_goals": r["away_goals"],
-                    "result_for_home_team_param": res,  # W/D/L/U z perspektywy home_team paramu
+                    "result_for_home_team_param": res,
                 })
 
             return jsonify({
@@ -653,7 +885,6 @@ def create_app():
         conn = get_connection()
         cur = conn.cursor()
         try:
-            # Bierzemy wszystkie mecze w lidze+sezonie z kompletnym wynikiem
             cur.execute(
                 """
                 SELECT home_team, away_team, home_goals, away_goals
@@ -665,8 +896,7 @@ def create_app():
             )
             rows = cur.fetchall()
 
-            # tabela w pythonie (łatwo i czytelnie na MVP)
-            table = {}  # team -> stats
+            table = {}
 
             def ensure_team(t: str):
                 if t not in table:
@@ -691,17 +921,14 @@ def create_app():
                 ensure_team(h)
                 ensure_team(a)
 
-                # played
                 table[h]["played"] += 1
                 table[a]["played"] += 1
 
-                # goals
                 table[h]["goals_for"] += hg
                 table[h]["goals_against"] += ag
                 table[a]["goals_for"] += ag
                 table[a]["goals_against"] += hg
 
-                # results + points
                 if hg > ag:
                     table[h]["wins"] += 1
                     table[a]["losses"] += 1
@@ -720,10 +947,8 @@ def create_app():
             for it in items:
                 it["goal_diff"] = it["goals_for"] - it["goals_against"]
 
-            # sort: points desc, GD desc, GF desc, name asc
             items.sort(key=lambda x: (-x["points"], -x["goal_diff"], -x["goals_for"], x["team"]))
 
-            # add rank
             for i, it in enumerate(items, start=1):
                 it["rank"] = i
 
@@ -856,16 +1081,13 @@ def create_app():
                 pass
             conn.close()
 
-
     check_team_alias_coverage()
-
     return app
 
 
 if __name__ == "__main__":
     app = create_app()
 
-    # Sterowanie debug przez ENV
     debug = os.getenv("FLASK_DEBUG", "0") == "1"
     host = os.getenv("FLASK_HOST", "127.0.0.1")
     port = int(os.getenv("FLASK_PORT", "5000"))

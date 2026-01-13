@@ -1,5 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "./App.css";
+
+import HomePredict from "./HomePredict"; // <- upewnij się, że masz ten plik/eksport
 
 const API = import.meta.env.VITE_API_URL ?? "/api";
 
@@ -9,27 +11,20 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  // zamiast jednej listy:
-  const [leagues, setLeagues] = useState([]); // ["Bundesliga", ...]
+  const [leagues, setLeagues] = useState([]);            // ["Bundesliga", ...]
   const [teamsByLeague, setTeamsByLeague] = useState({}); // { league: [{value,label}, ...] }
 
+  // Ładujemy dane globalnie (dla Home i Teams)
   useEffect(() => {
-    if (tab !== "teams") return;
-
     const controller = new AbortController();
 
     async function load() {
       try {
         setLoading(true);
         setError("");
-        setLeagues([]);
-        setTeamsByLeague({});
 
-        // 1) pobierz ligi
-        const leaguesUrl = `${API}/leagues`;
-        console.log("Pobieram ligi z:", leaguesUrl);
-
-        const resLeagues = await fetch(leaguesUrl, {
+        // 1) ligi
+        const resLeagues = await fetch(`${API}/leagues`, {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -44,12 +39,10 @@ export default function App() {
         const leaguesArr = Array.isArray(leaguesData) ? leaguesData : [];
         setLeagues(leaguesArr);
 
-        // 2) pobierz drużyny dla każdej ligi (równolegle)
+        // 2) teams per liga
         const pairs = await Promise.all(
           leaguesArr.map(async (lg) => {
             const url = `${API}/teams?league=${encodeURIComponent(lg)}&pretty=1`;
-            console.log("Pobieram teams z:", url);
-
             const resTeams = await fetch(url, {
               signal: controller.signal,
               cache: "no-store",
@@ -78,9 +71,12 @@ export default function App() {
 
     load();
     return () => controller.abort();
-  }, [tab]);
+  }, []);
 
-  const leaguesSorted = (leagues || []).slice().sort((a, b) => a.localeCompare(b));
+  const leaguesSorted = useMemo(
+    () => (leagues || []).slice().sort((a, b) => a.localeCompare(b)),
+    [leagues]
+  );
 
   return (
     <div className="app">
@@ -105,19 +101,27 @@ export default function App() {
       </header>
 
       <main className="app-main">
-        {tab === "home" && (
-          <section>
-            <h2>Start</h2>
-            <p>
-              Jeśli widzisz tę stronę, to znaczy że <b>App.jsx</b> działa i nie renderujesz już template Vite.
-            </p>
-            <p>
-              Backend API ustawiasz przez <code>VITE_API_URL</code> (np. w pliku <code>.env</code>).
-            </p>
-          </section>
+        {/* statusy wspólne */}
+        {loading && <p>Ładowanie…</p>}
+        {error && <p style={{ color: "crimson" }}>Błąd: {error}</p>}
+
+        {tab === "home" && !loading && !error && (
+          <>
+            <HomePredict leagues={leaguesSorted} teamsByLeague={teamsByLeague} API={API} />
+
+            <section>
+              <h2>Start</h2>
+              <p>
+                Jeśli widzisz tę stronę, to znaczy że <b>App.jsx</b> działa i nie renderujesz już template Vite.
+              </p>
+              <p>
+                Backend API ustawiasz przez <code>VITE_API_URL</code> (np. w pliku <code>.env</code>).
+              </p>
+            </section>
+          </>
         )}
 
-        {tab === "teams" && (
+        {tab === "teams" && !loading && !error && (
           <section>
             <h2>Teams</h2>
 
@@ -127,43 +131,35 @@ export default function App() {
               A drużyny z: <code>{API}/teams?league=...&pretty=1</code>
             </p>
 
-            {loading && <p>Ładowanie…</p>}
-            {error && <p style={{ color: "crimson" }}>Błąd: {error}</p>}
+            {leaguesSorted.length === 0 ? (
+              <p>(brak lig)</p>
+            ) : (
+              <div className="teams-by-league">
+                {leaguesSorted.map((lg) => {
+                  const teams = teamsByLeague[lg] || [];
+                  const teamsSorted = teams
+                    .slice()
+                    .sort((a, b) => (a.label || "").localeCompare(b.label || ""));
 
-            {!loading && !error && (
-              <>
-                {leaguesSorted.length === 0 ? (
-                  <p>(brak lig)</p>
-                ) : (
-                  <div className="teams-by-league">
-                    {leaguesSorted.map((lg) => {
-                      const teams = teamsByLeague[lg] || [];
-                      const teamsSorted = teams
-                        .slice()
-                        .sort((a, b) => (a.label || "").localeCompare(b.label || ""));
+                  return (
+                    <section key={lg} className="league-section">
+                      <h3 className="league-title">{lg}</h3>
 
-                      return (
-                        <section key={lg} className="league-section">
-                          <h3 className="league-title">{lg}</h3>
-
-                          {teamsSorted.length === 0 ? (
-                            <p style={{ opacity: 0.7 }}>(brak drużyn)</p>
-                          ) : (
-                            <div className="teams-grid" role="table" aria-label={`Teams ${lg}`}>
-                              {teamsSorted.map((t, i) => (
-                                <div className="team-cell" role="row" key={t.value ?? `${lg}-${i}`}>
-                                  {t.label ?? t.value}
-                                </div>
-                              ))}
+                      {teamsSorted.length === 0 ? (
+                        <p style={{ opacity: 0.7 }}>(brak drużyn)</p>
+                      ) : (
+                        <div className="teams-grid" role="table" aria-label={`Teams ${lg}`}>
+                          {teamsSorted.map((t, i) => (
+                            <div className="team-cell" role="row" key={t.value ?? `${lg}-${i}`}>
+                              {t.label ?? t.value}
                             </div>
-
-                          )}
-                        </section>
-                      );
-                    })}
-                  </div>
-                )}
-              </>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                  );
+                })}
+              </div>
             )}
           </section>
         )}

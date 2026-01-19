@@ -12,12 +12,19 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
   const [err, setErr] = useState("");
   const [pred, setPred] = useState(null);
 
+  // --- NOWE: data + okno historii (u Ciebie już było, zostawiamy) ---
+  const todayISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const [matchDate, setMatchDate] = useState(todayISO);
+
+  const [historyMode, setHistoryMode] = useState("last_n"); // "last_n" | "last_days"
+  const [historyValue, setHistoryValue] = useState(10);
+
   // Gdy ligi dojdą async, ustaw domyślną ligę
   useEffect(() => {
     if (!league && leagues?.length) setLeague(leagues[0]);
   }, [leagues, league]);
 
-  // Pobieranie sezonów dla wybranej ligi (opcjonalnie, ale przydatne)
+  // Pobieranie sezonów dla wybranej ligi
   useEffect(() => {
     if (!league) return;
 
@@ -36,11 +43,10 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
           signal: controller.signal,
           cache: "no-store",
         });
-        if (!res.ok) return; // nie blokuj, jeśli nie chcesz sezonów
+        if (!res.ok) return;
         const data = await res.json();
         const arr = Array.isArray(data) ? data : [];
         setSeasons(arr);
-        // domyślnie ostatni sezon
         if (arr.length) setSeason(arr[arr.length - 1]);
       } catch (e) {
         if (e.name !== "AbortError") {
@@ -66,15 +72,21 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
       if (!league) throw new Error("Wybierz ligę");
       if (!homeTeam || !awayTeam) throw new Error("Wybierz oba zespoły");
       if (homeTeam === awayTeam) throw new Error("Zespoły muszą być różne");
+      if (!matchDate) throw new Error("Wybierz datę meczu");
 
       const res = await fetch(`${API}/predict`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           league,
-          season: season || undefined, // backend przyjmie None/undefined
+          season: season || undefined,
           home_team: homeTeam,
           away_team: awayTeam,
+
+          // --- NOWE: cutoff + okno historii ---
+          match_date: matchDate,               // "YYYY-MM-DD"
+          history_mode: historyMode,           // "last_n" | "last_days"
+          history_value: Number(historyValue), // np. 10 albo 180
         }),
       });
 
@@ -144,6 +156,34 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
               </option>
             ))}
           </select>
+        </label>
+
+        {/* --- NOWE: data + historia --- */}
+        <label>
+          Data meczu (cutoff)
+          <input
+            type="date"
+            value={matchDate}
+            onChange={(e) => setMatchDate(e.target.value)}
+          />
+        </label>
+
+        <label>
+          Historia
+          <select value={historyMode} onChange={(e) => setHistoryMode(e.target.value)}>
+            <option value="last_n">Ostatnie N meczów</option>
+            <option value="last_days">Ostatnie X dni</option>
+          </select>
+        </label>
+
+        <label>
+          Wartość
+          <input
+            type="number"
+            min="1"
+            value={historyValue}
+            onChange={(e) => setHistoryValue(e.target.value)}
+          />
         </label>
 
         <button className="btn" onClick={onPredict} disabled={loading}>

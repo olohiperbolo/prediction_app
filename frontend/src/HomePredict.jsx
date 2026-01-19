@@ -18,6 +18,18 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
 
   const [historyMode, setHistoryMode] = useState("last_n"); // "last_n" | "last_days"
   const [historyValue, setHistoryValue] = useState(10);
+  const formatSeasonLabel = (s) => {
+  if (!s) return s;
+
+  if (String(s).includes("/")) return String(s);
+
+  const y = Number(s);
+  if (Number.isFinite(y) && y > 1800 && y < 3000) {
+    return `${y}/${y + 1}`;
+  }
+  return String(s);
+};
+
 
   // Gdy ligi dojdą async, ustaw domyślną ligę
   useEffect(() => {
@@ -128,7 +140,7 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
             <option value="">— wszystkie —</option>
             {seasons.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {formatSeasonLabel(s)}
               </option>
             ))}
           </select>

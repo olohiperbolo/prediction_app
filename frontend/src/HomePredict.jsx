@@ -12,24 +12,22 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
   const [err, setErr] = useState("");
   const [pred, setPred] = useState(null);
 
-  // cutoff + okno historii
+  // cutoff
   const todayISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [matchDate, setMatchDate] = useState(todayISO);
 
-  const [historyMode, setHistoryMode] = useState("last_n"); // "last_n" | "last_days"
-  const [historyValue, setHistoryValue] = useState(10);
+  // STAŁE ustawienia historii:
+  const HISTORY_MODE = "last_n";
+  const HISTORY_VALUE = 5;
+
   const formatSeasonLabel = (s) => {
-  if (!s) return s;
+    if (!s) return s;
+    if (String(s).includes("/")) return String(s);
 
-  if (String(s).includes("/")) return String(s);
-
-  const y = Number(s);
-  if (Number.isFinite(y) && y > 1800 && y < 3000) {
-    return `${y}/${y + 1}`;
-  }
-  return String(s);
-};
-
+    const y = Number(s);
+    if (Number.isFinite(y) && y > 1800 && y < 3000) return `${y}/${y + 1}`;
+    return String(s);
+  };
 
   // Gdy ligi dojdą async, ustaw domyślną ligę
   useEffect(() => {
@@ -96,9 +94,9 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
           home_team: homeTeam,
           away_team: awayTeam,
 
-          match_date: matchDate, // "YYYY-MM-DD"
-          history_mode: historyMode, // "last_n" | "last_days"
-          history_value: Number(historyValue), // np. 10 albo 180
+          match_date: matchDate,
+          history_mode: HISTORY_MODE,
+          history_value: HISTORY_VALUE,
         }),
       });
 
@@ -175,23 +173,10 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
           <input type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} />
         </label>
 
-        <label>
-          Historia
-          <select value={historyMode} onChange={(e) => setHistoryMode(e.target.value)}>
-            <option value="last_n">Ostatnie N meczów</option>
-            <option value="last_days">Ostatnie X dni</option>
-          </select>
-        </label>
-
-        <label>
-          Wartość
-          <input
-            type="number"
-            min="1"
-            value={historyValue}
-            onChange={(e) => setHistoryValue(e.target.value)}
-          />
-        </label>
+        {/* INFO zamiast wyboru: */}
+        <div style={{ alignSelf: "end", opacity: 0.8 }}>
+          Historia: ostatnie <b>{HISTORY_VALUE}</b> meczów
+        </div>
 
         <button className="btn" onClick={onPredict} disabled={loading}>
           {loading ? "Liczenie..." : "Predict"}
@@ -207,12 +192,8 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
               <strong>Cutoff:</strong> {pred.cutoff_match_date ?? "—"}
             </div>
             <div>
-              <strong>Historia:</strong> {pred.history?.mode ?? "—"} = {pred.history?.value ?? "—"}
-            </div>
-            <div>
               <strong>Mecze użyte:</strong> {pred.training_matches_used ?? "—"}
             </div>
-
             <div>
               <strong>λ Home:</strong> {pred.lambda_home?.toFixed?.(2) ?? pred.lambda_home}
             </div>

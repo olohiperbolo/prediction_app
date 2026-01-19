@@ -12,7 +12,7 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
   const [err, setErr] = useState("");
   const [pred, setPred] = useState(null);
 
-  // --- NOWE: data + okno historii (u Ciebie już było, zostawiamy) ---
+  // cutoff + okno historii
   const todayISO = useMemo(() => new Date().toISOString().slice(0, 10), []);
   const [matchDate, setMatchDate] = useState(todayISO);
 
@@ -44,6 +44,7 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
           cache: "no-store",
         });
         if (!res.ok) return;
+
         const data = await res.json();
         const arr = Array.isArray(data) ? data : [];
         setSeasons(arr);
@@ -83,9 +84,8 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
           home_team: homeTeam,
           away_team: awayTeam,
 
-          // --- NOWE: cutoff + okno historii ---
-          match_date: matchDate,               // "YYYY-MM-DD"
-          history_mode: historyMode,           // "last_n" | "last_days"
+          match_date: matchDate, // "YYYY-MM-DD"
+          history_mode: historyMode, // "last_n" | "last_days"
           history_value: Number(historyValue), // np. 10 albo 180
         }),
       });
@@ -158,14 +158,9 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
           </select>
         </label>
 
-        {/* --- NOWE: data + historia --- */}
         <label>
           Data meczu (cutoff)
-          <input
-            type="date"
-            value={matchDate}
-            onChange={(e) => setMatchDate(e.target.value)}
-          />
+          <input type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} />
         </label>
 
         <label>
@@ -196,6 +191,16 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
       {pred && (
         <div className="resultBox">
           <div className="resultRow">
+            <div>
+              <strong>Cutoff:</strong> {pred.cutoff_match_date ?? "—"}
+            </div>
+            <div>
+              <strong>Historia:</strong> {pred.history?.mode ?? "—"} = {pred.history?.value ?? "—"}
+            </div>
+            <div>
+              <strong>Mecze użyte:</strong> {pred.training_matches_used ?? "—"}
+            </div>
+
             <div>
               <strong>λ Home:</strong> {pred.lambda_home?.toFixed?.(2) ?? pred.lambda_home}
             </div>

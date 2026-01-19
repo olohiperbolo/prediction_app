@@ -58,9 +58,10 @@
 }
 
 .resultRow{
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(220px, 1fr));
+  gap: 10px 16px;
+  align-items: start;
 }
 
 .simpleTable{

@@ -167,7 +167,7 @@ export default function App() {
         {tab === "about" && (
           <section>
             <h2>O aplikacji</h2>
-            <p>Tu możesz wrzucić opis projektu, linki, itd.</p>
+            <p>Opis.</p>
           </section>
         )}
       </main>

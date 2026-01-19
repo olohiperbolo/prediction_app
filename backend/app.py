@@ -210,7 +210,21 @@ def outcome_probs(mat):
     return p_home, p_draw, p_away, {"home_goals": best[0], "away_goals": best[1], "p": best[2]}
 
 
-def fetch_matches_for_predict(conn, league: str, season: str | None, limit: int = 2000):
+def fetch_matches_for_predict(
+    conn,
+    league: str,
+    season: str | None,
+    cutoff_date: str | None,
+    history_mode: str = "last_n",
+    history_value: int = 2000,
+):
+    """
+    Zwraca mecze do trenowania/wyliczania lambd, ALE TYLKO sprzed cutoff_date.
+    - cutoff_date: "YYYY-MM-DD" (mecze < cutoff_date)
+    - history_mode:
+        * "last_n"   -> bierze ostatnie N meczów przed cutoff (ORDER BY match_date DESC LIMIT N)
+        * "last_days"-> bierze mecze z ostatnich X dni przed cutoff (AND match_date >= cutoff-X)
+    """
     where = [
         "league = ?",
         "home_goals IS NOT NULL",
@@ -222,7 +236,21 @@ def fetch_matches_for_predict(conn, league: str, season: str | None, limit: int 
         where.append("season = ?")
         params.append(season)
 
+    # cutoff: używamy TYLKO meczów sprzed daty meczu
+    if cutoff_date:
+        where.append("match_date < ?")
+        params.append(cutoff_date)
+
+        if history_mode == "last_days":
+            # SQLite: date(?, '-180 day') daje datę -180 dni
+            where.append("match_date >= date(?, ?)")
+            params.append(cutoff_date)
+            params.append(f"-{int(history_value)} day")
+
     where_sql = " AND ".join(where)
+
+    # last_days: LIMIT można dać duży, bo i tak tnie po dacie
+    limit = int(history_value) if history_mode == "last_n" else 5000
 
     sql = f"""
         SELECT home_team, away_team, home_goals, away_goals
@@ -538,10 +566,38 @@ def create_app():
         home_team = (data.get("home_team") or "").strip()
         away_team = (data.get("away_team") or "").strip()
 
+        # NOWE: cutoff + okno historii
+        raw_match_date = (data.get("match_date") or "").strip() or None
+        history_mode = (data.get("history_mode") or "last_n").strip()
+        history_value_raw = data.get("history_value", 10)
+
         if not league or not home_team or not away_team:
             return jsonify({"error": "Bad Request", "message": "league, home_team, away_team are required"}), 400
         if home_team == away_team:
             return jsonify({"error": "Bad Request", "message": "Choose two different teams"}), 400
+
+        # walidacja daty
+        try:
+            match_date = parse_date("match_date", raw_match_date)  # str albo None
+        except ValueError as e:
+            return jsonify({"error": "Bad Request", "message": str(e)}), 400
+
+        # walidacja history_mode
+        if history_mode not in ("last_n", "last_days"):
+            return jsonify({"error": "Bad Request", "message": "history_mode must be 'last_n' or 'last_days'"}), 400
+
+        # walidacja history_value
+        try:
+            history_value = int(history_value_raw)
+        except Exception:
+            return jsonify({"error": "Bad Request", "message": "history_value must be an integer"}), 400
+
+        if history_mode == "last_n":
+            if history_value < 1 or history_value > 5000:
+                return jsonify({"error": "Bad Request", "message": "history_value for last_n must be 1..5000"}), 400
+        else:
+            if history_value < 1 or history_value > 3650:
+                return jsonify({"error": "Bad Request", "message": "history_value for last_days must be 1..3650"}), 400
 
         conn = get_connection()
         cur = conn.cursor()
@@ -565,7 +621,8 @@ def create_app():
                 tuple(params + [home_team, home_team]),
             )
             if cur.fetchone() is None:
-                return jsonify({"error": "Bad Request", "message": "home_team not found in selected league/season"}), 400
+                return jsonify(
+                    {"error": "Bad Request", "message": "home_team not found in selected league/season"}), 400
 
             cur.execute(
                 f"""
@@ -578,9 +635,19 @@ def create_app():
                 tuple(params + [away_team, away_team]),
             )
             if cur.fetchone() is None:
-                return jsonify({"error": "Bad Request", "message": "away_team not found in selected league/season"}), 400
+                return jsonify(
+                    {"error": "Bad Request", "message": "away_team not found in selected league/season"}), 400
 
-            rows = fetch_matches_for_predict(conn, league, season, limit=2000)
+            # KLUCZ: tylko mecze sprzed match_date (jeśli podano)
+            rows = fetch_matches_for_predict(
+                conn,
+                league=league,
+                season=season,
+                cutoff_date=match_date,
+                history_mode=history_mode,
+                history_value=(history_value if match_date else 2000),
+            )
+
             lh, la = compute_lambdas_poisson(rows, home_team, away_team)
 
             mat = score_matrix(lh, la, max_goals=MAX_GOALS)
@@ -593,6 +660,11 @@ def create_app():
                 "away_team": away_team,
                 "home_team_label": display_team(home_team),
                 "away_team_label": display_team(away_team),
+
+                # pomocne do debugowania
+                "cutoff_match_date": match_date,
+                "history": {"mode": history_mode, "value": history_value},
+
                 "lambda_home": lh,
                 "lambda_away": la,
                 "p_home": p_home,

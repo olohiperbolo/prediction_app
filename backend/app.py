@@ -218,13 +218,6 @@ def fetch_matches_for_predict(
     history_mode: str = "last_n",
     history_value: int = 2000,
 ):
-    """
-    Zwraca mecze do trenowania/wyliczania lambd, ALE TYLKO sprzed cutoff_date.
-    - cutoff_date: "YYYY-MM-DD" (mecze < cutoff_date)
-    - history_mode:
-        * "last_n"   -> bierze ostatnie N meczów przed cutoff (ORDER BY match_date DESC LIMIT N)
-        * "last_days"-> bierze mecze z ostatnich X dni przed cutoff (AND match_date >= cutoff-X)
-    """
     where = [
         "league = ?",
         "home_goals IS NOT NULL",
@@ -265,13 +258,6 @@ def fetch_matches_for_predict(
 
 
 def compute_lambdas_poisson(rows: list[dict], home_team: str, away_team: str):
-    """
-    Prosty Poisson MVP:
-    - średnie gole ligowe (home/away)
-    - attack/defense ratios per team (home i away osobno)
-    - lambda_home = avg_home_goals * home_attack(home) * away_def_ratio(away)
-    - lambda_away = avg_away_goals * away_attack(away) * home_def_ratio(home)
-    """
     if not rows:
         return 1.2, 1.0
 
@@ -363,9 +349,6 @@ def display_team(name: str) -> str:
 
 
 def check_team_alias_coverage() -> None:
-    """
-    Wypisuje w konsoli drużyny, które są w DB, a nie mają wpisu w TEAM_DISPLAY.
-    """
     conn = get_connection()
     cur = conn.cursor()
     try:
@@ -450,7 +433,6 @@ def create_app():
     def handle_unhandled_exception(e: Exception):
         return jsonify({"error": "Internal Server Error", "message": "Unexpected error"}), 500
 
-    # --- Routes ------------------------------------------------------------
 
     @app.get("/health")
     def health():
@@ -602,7 +584,7 @@ def create_app():
         conn = get_connection()
         cur = conn.cursor()
         try:
-            # Walidacja: czy teams istnieją w lidze (+ sezon jeśli podany)
+            # Walidacja: czy teams istnieją w lidze
             where = ["league = ?"]
             params: list[object] = [league]
             if season:

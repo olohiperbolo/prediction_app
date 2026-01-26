@@ -108,28 +108,12 @@ export default function App() {
         {tab === "home" && !loading && !error && (
           <>
             <HomePredict leagues={leaguesSorted} teamsByLeague={teamsByLeague} API={API} />
-
-            <section>
-              <h2>Start</h2>
-              <p>
-                Jeśli widzisz tę stronę, to znaczy że <b>App.jsx</b> działa i nie renderujesz już template Vite.
-              </p>
-              <p>
-                Backend API ustawiasz przez <code>VITE_API_URL</code> (np. w pliku <code>.env</code>).
-              </p>
-            </section>
           </>
         )}
 
         {tab === "teams" && !loading && !error && (
           <section>
             <h2>Teams</h2>
-
-            <p style={{ opacity: 0.8 }}>
-              Pobieram ligi z: <code>{API}/leagues</code>
-              <br />
-              A drużyny z: <code>{API}/teams?league=...&pretty=1</code>
-            </p>
 
             {leaguesSorted.length === 0 ? (
               <p>(brak lig)</p>
@@ -167,7 +151,7 @@ export default function App() {
         {tab === "about" && (
           <section>
             <h2>O aplikacji</h2>
-            <p>Opis.</p>
+            <p>Ta aplikacja służy do przewidywania wyniku meczu piłkarskiego na podstawie danych historycznych. Wybierz ligę, sezon oraz drużyny gospodarzy i gości, a następnie ustaw datę „cutoff”, aby model brał pod uwagę tylko mecze rozegrane przed tym dniem. Predykcja opiera się na analizie formy z ostatnich 5 spotkań i zwraca najbardziej prawdopodobny rezultat..</p>
           </section>
         )}
       </main>

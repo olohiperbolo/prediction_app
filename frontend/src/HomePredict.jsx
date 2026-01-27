@@ -169,7 +169,7 @@ export default function HomePredict({ leagues, teamsByLeague, API }) {
         </label>
 
         <label>
-          Data meczu (cutoff)
+          Data meczu
           <input type="date" value={matchDate} onChange={(e) => setMatchDate(e.target.value)} />
         </label>
 

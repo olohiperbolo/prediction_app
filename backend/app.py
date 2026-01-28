@@ -337,10 +337,6 @@ def compute_lambdas_poisson(rows: list[dict], home_team: str, away_team: str):
     return lh, la
 
 
-# =========================
-# Existing helpers
-# =========================
-
 def display_team(name: str) -> str:
     if name is None:
         return name
@@ -423,7 +419,7 @@ def create_app():
     app = Flask(__name__)
     CORS(app, resources={r"/*": {"origins": "http://localhost:5173"}})
 
-    # --- Error handling: ALWAYS JSON ---------------------------------------
+    # Error handling
 
     @app.errorhandler(HTTPException)
     def handle_http_exception(e: HTTPException):
@@ -538,7 +534,7 @@ def create_app():
         items.sort(key=lambda x: x["label"])
         return jsonify(items)
 
-    # ===== NEW: Poisson prediction (Option A) =====
+    #Poisson prediction
     @app.post("/predict")
     def predict():
         data = request.get_json(silent=True) or {}
@@ -548,7 +544,7 @@ def create_app():
         home_team = (data.get("home_team") or "").strip()
         away_team = (data.get("away_team") or "").strip()
 
-        # NOWE: cutoff + okno historii
+        #cutoff + okno historii
         raw_match_date = (data.get("match_date") or "").strip() or None
         history_mode = (data.get("history_mode") or "last_n").strip()
         history_value_raw = data.get("history_value", 10)
@@ -584,7 +580,7 @@ def create_app():
         conn = get_connection()
         cur = conn.cursor()
         try:
-            # Walidacja: czy teams istnieją w lidze
+            # Walidacja czy teams istnieją w lidze
             where = ["league = ?"]
             params: list[object] = [league]
             if season:
@@ -620,7 +616,7 @@ def create_app():
                 return jsonify(
                     {"error": "Bad Request", "message": "away_team not found in selected league/season"}), 400
 
-            # KLUCZ: tylko mecze sprzed match_date (jeśli podano)
+            #tylko mecze sprzed match_date
             rows = fetch_matches_for_predict(
                 conn,
                 league=league,
@@ -1019,7 +1015,6 @@ def create_app():
                 pass
             conn.close()
 
-    # GET /matches?league=&season=&date_from=&date_to=&team=&result=&limit=&offset=&sort=
     @app.get("/matches")
     def get_matches():
         league = request.args.get("league")

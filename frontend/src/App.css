@@ -152,7 +152,6 @@
   border-color: #111;
 }
 
-/* disabled wygląda jak „wyłączone” — da się, ale estetycznie średnio */
 .topnav-center button:disabled {
   opacity: 0.6;
   cursor: default;
@@ -191,7 +190,7 @@
 }
 .league-title {
   position: sticky;
-  top: 72px; /* dopasuj do wysokości headera */
+  top: 72px;
   background: white;
   padding: 6px 0;
   z-index: 1;

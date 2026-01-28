@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import "./App.css";
 
-import HomePredict from "./HomePredict"; // <- upewnij się, że masz ten plik/eksport
+import HomePredict from "./HomePredict";
 
 const API = import.meta.env.VITE_API_URL ?? "/api";
 
@@ -11,10 +11,10 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const [leagues, setLeagues] = useState([]);            // ["Bundesliga", ...]
-  const [teamsByLeague, setTeamsByLeague] = useState({}); // { league: [{value,label}, ...] }
+  const [leagues, setLeagues] = useState([]);
+  const [teamsByLeague, setTeamsByLeague] = useState({});
 
-  // Ładujemy dane globalnie (dla Home i Teams)
+  // Ładujemy dane globalnie dla home i teams
   useEffect(() => {
     const controller = new AbortController();
 
